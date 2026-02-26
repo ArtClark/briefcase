@@ -3,11 +3,11 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'VsDevShellManager.ps1'
+      - 'briefcase.sh'
 
 jobs:
   update-badge:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest  # Switched to ubuntu for faster startup, works fine with pwsh
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -16,20 +16,31 @@ jobs:
         id: get_version
         shell: pwsh
         run: |
-          # Regex to find the $ScriptVersion value
-          $content = Get-Content "VsDevShellManager.ps1" -Raw
-          if ($content -match '\$ScriptVersion\s*=\s*"([^"]+)"') {
+          # Regex to find the '# Version: X.X' line in briefcase.sh
+          $content = Get-Content "briefcase.sh" -Raw
+          if ($content -match '# Version:\s*([^\r\n\s]+)') {
               $version = $matches[1]
-              echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+              "VERSION=$version" >> $env:GITHUB_OUTPUT
+              Write-Host "Found version: $version"
+          } else {
+              Write-Error "Version string not found in briefcase.sh"
+              exit 1
           }
 
       - name: Update JSON file
         shell: pwsh
         run: |
           $version = "${{ steps.get_version.outputs.VERSION }}"
-          $json = Get-Content "version.json" | ConvertFrom-Json
-          $json.message = $version
-          $json | ConvertTo-Json | Out-File "version.json"
+          $file = "version.json"
+          
+          # Create file if it doesn't exist
+          if (-not (Test-Path $file)) {
+              @{ schemaVersion = 1; label = "version"; message = $version; color = "blue" } | ConvertTo-Json | Out-File $file
+          } else {
+              $json = Get-Content $file | ConvertFrom-Json
+              $json.message = $version
+              $json | ConvertTo-Json | Out-File $file
+          }
 
       - name: Commit and Push Changes
         run: |
